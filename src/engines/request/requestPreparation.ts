@@ -668,6 +668,7 @@ export async function prepareCollaboratorReplyRequest(params: {
           .filter((candidate) => candidate.id !== persona.id)
           .map((candidate) => ({ id: candidate.id, memory: candidate.memory }))
       : [],
+    queryText: latestUserRecallQuery(requestSourceMessages),
     maxTokens: budgetPlan.buckets.memory.maxTokens
   });
   const memoryPlanMs = runtimeNow() - stepStartedAt;
