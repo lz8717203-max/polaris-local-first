@@ -109,4 +109,56 @@ describe('resolveRequestMemoryPlan', () => {
     expect(plan.selectedLines).toContain('允许进入全局的协作者记忆。');
     expect(plan.selectedLines).not.toContain('不进入全局的协作者记忆。');
   });
+
+  it('keeps core memory and query-relevant lines while dropping unrelated memories', () => {
+    const plan = resolveRequestMemoryPlan({
+      memory: createMemory({
+        personalMemories: [
+          '称呼用户为心鱼。',
+          '用户喜欢茉莉味沐浴露。',
+          '用户最近在研究 Polaris 记忆系统。',
+          '用户不看恐怖片。'
+        ]
+      }),
+      maxTokens: null,
+      queryText: '我们继续改 Polaris 的记忆读取吧'
+    });
+
+    expect(plan.selectedLines).toContain('称呼用户为心鱼。');
+    expect(plan.selectedLines).toContain('用户最近在研究 Polaris 记忆系统。');
+    expect(plan.selectedLines).not.toContain('用户喜欢茉莉味沐浴露。');
+    expect(plan.selectedLines).not.toContain('用户不看恐怖片。');
+  });
+
+  it('keeps only core memory for a short acknowledgement with no useful topic signal', () => {
+    const plan = resolveRequestMemoryPlan({
+      memory: createMemory({
+        personalMemories: [
+          '称呼用户为心鱼。',
+          '用户喜欢茉莉味沐浴露。',
+          '用户不看恐怖片。'
+        ]
+      }),
+      maxTokens: null,
+      queryText: '嗯嗯'
+    });
+
+    expect(plan.selectedLines).toEqual(['称呼用户为心鱼。']);
+  });
+
+  it('limits query-relevant non-core memories to six lines', () => {
+    const plan = resolveRequestMemoryPlan({
+      memory: createMemory({
+        personalMemories: [
+          '称呼用户为心鱼。',
+          ...Array.from({ length: 9 }, (_, index) => `Polaris 记忆系统测试线索 ${index + 1}。`)
+        ]
+      }),
+      maxTokens: null,
+      queryText: '继续测试 Polaris 记忆系统'
+    });
+
+    expect(plan.selectedLines).toContain('称呼用户为心鱼。');
+    expect(plan.selectedLines.filter((line) => line.includes('Polaris'))).toHaveLength(6);
+  });
 });
