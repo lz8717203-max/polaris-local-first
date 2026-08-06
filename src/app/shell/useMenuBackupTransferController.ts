@@ -17,6 +17,12 @@ import {
   formatCompleteBackupExportError
 } from './completeBackupExport';
 import { formatStoreImportResult } from '../../stores/storeImportResult';
+import {
+  DEFAULT_STORE_IMPORT_SELECTION,
+  selectedStoreImportDomains,
+  type StoreImportMode,
+  type StoreImportSelection
+} from '../../stores/storeImportSelection';
 
 type MenuBackupTransferUi = {
   alert: (message: string) => void;
@@ -60,10 +66,24 @@ export function resolveMenuLocalBackupDetails(systemBackupAvailability: ReturnTy
   };
 }
 
-async function importBackupData(file: Blob, onProgress: (progress: StoreTransferProgress) => void) {
+async function importBackupData(
+  file: Blob,
+  onProgress: (progress: StoreTransferProgress) => void,
+  options: { mode: StoreImportMode; selection: StoreImportSelection }
+) {
   const { importAllData } = await import('../../stores/spaceStoreDataTransfer');
-  return await importAllData(file, { onProgress });
+  return await importAllData(file, { onProgress, ...options });
 }
+
+const IMPORT_DOMAIN_LABELS: Record<keyof StoreImportSelection, string> = {
+  chat: '对话记录',
+  collection: '收藏与工作区',
+  persona: '角色与记忆',
+  document: '记忆文档正文',
+  runtime: 'API、模型与 MCP',
+  space: '界面与空间设置',
+  asset: '图片与附件'
+};
 
 export function useMenuBackupTransferController({
   ui,
@@ -75,6 +95,10 @@ export function useMenuBackupTransferController({
   const [importProgress, setImportProgress] = useState<StoreTransferProgress | null>(null);
   const [exportingWebDav, setExportingWebDav] = useState(false);
   const [importingWebDav, setImportingWebDav] = useState(false);
+  const [importMode, setImportMode] = useState<StoreImportMode>('merge');
+  const [importSelection, setImportSelection] = useState<StoreImportSelection>({
+    ...DEFAULT_STORE_IMPORT_SELECTION
+  });
 
   const systemBackupAvailability = getSystemBackupAvailability();
   const {
@@ -95,7 +119,10 @@ export function useMenuBackupTransferController({
     try {
       setImportingData(true);
       setImportProgress({ message: '识别备份包' });
-      const result = await importBackupData(file, setImportProgress);
+      const result = await importBackupData(file, setImportProgress, {
+        mode: importMode,
+        selection: importSelection
+      });
       ui.alert(formatStoreImportResult(result));
     } catch (error) {
       const message = error instanceof Error ? error.message : '文件格式不正确';
@@ -128,7 +155,14 @@ export function useMenuBackupTransferController({
       return;
     }
 
-    if (!ui.confirm('导入会覆盖当前数据，确定吗？')) return;
+    const selectedLabels = selectedStoreImportDomains(importSelection)
+      .map((domain) => IMPORT_DOMAIN_LABELS[domain]);
+    if (selectedLabels.length === 0) {
+      ui.alert('请至少选择一类要恢复的数据。');
+      return;
+    }
+    const action = importMode === 'merge' ? '合并到当前数据' : '替换所选部分';
+    if (!ui.confirm(`将${action}：${selectedLabels.join('、')}。未选择的内容不会改动，确定吗？`)) return;
 
     if (!canUseNativeSystemBackupFiles()) {
       ui.triggerBrowserImportPicker();
@@ -141,7 +175,10 @@ export function useMenuBackupTransferController({
       setImportProgress({ message: '等待选择备份包' });
       const file = await importBackupViaSystemFiles();
       if (!file) return;
-      const result = await importBackupData(file, setImportProgress);
+      const result = await importBackupData(file, setImportProgress, {
+        mode: importMode,
+        selection: importSelection
+      });
       completionMessage = formatStoreImportResult(result);
     } catch (error) {
       completionMessage = formatMenuLocalBackupError(error, '导入');
@@ -174,9 +211,19 @@ export function useMenuBackupTransferController({
   const importFromWebDav = async () => {
     try {
       setImportingWebDav(true);
-      if (!ui.confirm('会从 WebDAV 拉取最近一份备份，并覆盖当前数据，确定吗？')) return;
+      const selectedLabels = selectedStoreImportDomains(importSelection)
+        .map((domain) => IMPORT_DOMAIN_LABELS[domain]);
+      if (selectedLabels.length === 0) {
+        ui.alert('请至少选择一类要恢复的数据。');
+        return;
+      }
+      const action = importMode === 'merge' ? '合并到当前数据' : '替换所选部分';
+      if (!ui.confirm(`会从 WebDAV 拉取最近一份备份，并${action}：${selectedLabels.join('、')}。确定吗？`)) return;
       const file = await downloadLatestBackupFromWebDav(webdav);
-      const result = await importBackupData(file, setImportProgress);
+      const result = await importBackupData(file, setImportProgress, {
+        mode: importMode,
+        selection: importSelection
+      });
       ui.alert(formatStoreImportResult(result));
     } catch (error) {
       const message = error instanceof Error ? error.message : '读取 WebDAV 备份失败';
@@ -198,6 +245,22 @@ export function useMenuBackupTransferController({
     localImportDetail: visibleLocalImportDetail,
     localExportProgress,
     localImportProgress,
+    importMode,
+    importSelection,
+    onSetImportMode: setImportMode,
+    onToggleImportDomain: (domain: keyof StoreImportSelection) => {
+      setImportSelection((current) => ({ ...current, [domain]: !current[domain] }));
+    },
+    onSelectAllImportDomains: () => setImportSelection({ ...DEFAULT_STORE_IMPORT_SELECTION }),
+    onClearImportDomains: () => setImportSelection({
+      chat: false,
+      collection: false,
+      persona: false,
+      document: false,
+      runtime: false,
+      space: false,
+      asset: false
+    }),
     onImportBrowserFileSelected: async (file: File | null) => {
       if (!file) return;
       await runImport(file);

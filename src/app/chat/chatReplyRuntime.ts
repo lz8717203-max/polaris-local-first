@@ -35,6 +35,10 @@ import { buildReplyToolContext, type ChatReplyRequestSnapshot } from './chatRepl
 import { buildChatMemoryEvidenceFromAudit } from './chatMemoryEvidence';
 import { createStreamingSession } from './chatStreamingSession';
 import { buildStoredToolCallRecords } from './chatToolCallRecords';
+import {
+  resolveAssistantMessageParts,
+  waitForMultiMessageDelay
+} from './chatMultiMessage';
 import { recordModelFlowTrace } from './modelFlowTraceRecorder';
 import { resolveAvailablePolarisToolNames } from '../../engines/tool-protocol/toolRegistry';
 import {
@@ -348,6 +352,7 @@ async function requestReplyRound({
     activeProjectId: activeRequestSnapshot.activeProjectId,
     allowCreativeCssRecovery: toolContextWithMcp.toolEnforcementScope === 'theme-only',
     mcpTools: toolContextWithMcp.mcpTools,
+    suppressVisibleProgress: collaboratorForReply?.advanced.multiMessageEnabled === true,
     onFirstProgressFlushed: () => {
       recordChatSendPerformanceMark(conversationId, '聊天发送 · 首个回复已渲染');
     }
@@ -494,6 +499,20 @@ async function requestReplyRound({
       actions: parsed.actions,
       nativeToolCalls: reply.nativeToolCalls ?? []
     });
+    const assistantMessageParts = resolveAssistantMessageParts({
+      content: visibleContent,
+      enabled: collaboratorForReply?.advanced.multiMessageEnabled === true,
+      safeToSplit:
+        toolOutcome.status === 'ready'
+        && toolOutcome.resolvedActions.length === 0
+        && parsed.actions.length === 0
+        && (reply.nativeToolCalls?.length ?? 0) === 0
+        && !taskUpdate
+        && !isToolOnlyTurn
+        && !reply.transportIncomplete
+        && !shouldRequestLengthFollowup({ reply, depth: lengthRecoveryDepth })
+    });
+    const firstVisibleContent = assistantMessageParts[0] ?? visibleContent;
 
     chat.updateMessage(writableConversation, placeholderId, buildAssistantMessagePatch({
       messageId: placeholderId,
@@ -501,7 +520,7 @@ async function requestReplyRound({
       speakerCollaboratorId: collaboratorId,
       providerId: activeRequestSnapshot.api.id,
       providerName: activeRequestSnapshot.api.name,
-      visibleContent,
+      visibleContent: firstVisibleContent,
       reply,
       nativeToolCalls: storedToolCalls,
       memoryEvidence: buildChatMemoryEvidenceFromAudit(requestAudit)
@@ -845,6 +864,24 @@ async function requestReplyRound({
           lengthRecoveryDepth: lengthRecoveryDepth + 1
         }
       });
+    }
+
+    if (assistantMessageParts.length > 1) {
+      for (let index = 1; index < assistantMessageParts.length; index += 1) {
+        await waitForMultiMessageDelay(assistantMessageParts[index - 1], index);
+        throwIfAborted(streaming.controller.signal);
+        chat.addMessage(writableConversation, {
+          ...createMessage('assistant', assistantMessageParts[index]),
+          assistantName,
+          speakerCollaboratorId: collaboratorId,
+          providerId: activeRequestSnapshot.api.id,
+          providerName: activeRequestSnapshot.api.name,
+          model: reply.model
+        });
+        recordChatSendPerformanceMark(conversationId, '聊天发送 · 连续消息已显示', {
+          extra: [`part ${index + 1}/${assistantMessageParts.length}`]
+        });
+      }
     }
 
     if (reply.transportIncomplete) {

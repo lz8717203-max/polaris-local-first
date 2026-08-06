@@ -89,6 +89,53 @@ describe('createStreamingSession', () => {
     }
   });
 
+  it('can keep streamed text hidden while preserving the live lifecycle', () => {
+    let streamingState: ChatStreamingState = null;
+    let scheduledFrame: RafCallback | null = null;
+    const updateMessage = vi.fn();
+    vi.stubGlobal('window', {
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+      requestAnimationFrame: (callback: RafCallback) => {
+        scheduledFrame = callback;
+        return 1;
+      },
+      cancelAnimationFrame: vi.fn()
+    });
+
+    try {
+      const session = createStreamingSession({
+        ui: {
+          abortControllerRef: { current: null },
+          streamingLifecycleReleaseRef: { current: null },
+          setSending: vi.fn(),
+          setStreaming: (value) => {
+            streamingState = typeof value === 'function' ? value(streamingState) : value;
+          }
+        },
+        chat: { addMessage: vi.fn(), updateMessage },
+        conversationId: 'conv_1',
+        writableConversation: buildWritableConversation(),
+        placeholderId: 'assistant_1',
+        assistantName: 'Pharos',
+        modelTier: 'medium',
+        themeToolMode: 'stable',
+        suppressVisibleProgress: true
+      });
+
+      session.start();
+      session.queueProgress({ content: '先不显示这段流式文字' });
+      const frame = scheduledFrame as RafCallback | null;
+      frame?.(0);
+
+      expect(updateMessage).not.toHaveBeenCalled();
+      expect(streamingState).toEqual({ messageId: 'assistant_1', phase: 'live' });
+      expect(session.getLatestProgress()?.content).toBe('先不显示这段流式文字');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('throttles heavy streamed code patches before rendering them', () => {
     let streamingState: ChatStreamingState = null;
     let scheduledFrame: RafCallback | null = null;

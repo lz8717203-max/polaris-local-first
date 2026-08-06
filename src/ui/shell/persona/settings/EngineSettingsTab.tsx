@@ -124,6 +124,16 @@ export function EngineSettingsTab({ activePersona, onUpdatePersona }: PersonaTab
           checked={activePersona?.advanced.streaming ?? true}
           onToggle={() => onUpdatePersona({ advanced: { streaming: !(activePersona?.advanced.streaming ?? true) } })}
         />
+
+
+        <PersonaToggle
+          label="连续多条消息"
+          description="一次模型回复自然拆成 2–5 条短消息，代码、表格和工具调用不会拆分。"
+          checked={activePersona?.advanced.multiMessageEnabled ?? false}
+          onToggle={() => onUpdatePersona({
+            advanced: { multiMessageEnabled: !(activePersona?.advanced.multiMessageEnabled ?? false) }
+          })}
+        />
       </div>
     </>
   );

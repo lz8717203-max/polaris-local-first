@@ -205,6 +205,7 @@ export function createPersonaTemplate(
       contextMessageLimit: overrides.advanced?.contextMessageLimit ?? '',
       showThinking: overrides.advanced?.showThinking ?? true,
       streaming: overrides.advanced?.streaming ?? true,
+      multiMessageEnabled: overrides.advanced?.multiMessageEnabled ?? false,
       customHeaders: overrides.advanced?.customHeaders ?? '',
       customBody: overrides.advanced?.customBody ?? '',
       regexRules: overrides.advanced?.regexRules ?? '',

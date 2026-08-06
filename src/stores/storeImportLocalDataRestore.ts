@@ -75,6 +75,7 @@ export type StructuredImportLocalDataRestoreResult = {
 
 export type StructuredImportLocalDataRestoreOptions = {
   skipDomains?: LocalDataDomain[];
+  selectedDomains?: LocalDataDomain[];
   committedAt?: number;
 };
 
@@ -135,6 +136,7 @@ export async function restoreStructuredImportToLocalDataRepository(
   const restoredDomains: LocalDataDomain[] = [];
   const skippedDomains: StructuredImportLocalDataRestoreSkippedDomain[] = [];
   const skippedDomainSet = new Set(options.skipDomains ?? []);
+  const selectedDomainSet = new Set(options.selectedDomains ?? STRUCTURED_IMPORT_DOMAINS);
 
   async function prepareReplacement(unitOfWork: Parameters<typeof repository.commit>[0]) {
     const currentRows = [];
@@ -163,6 +165,7 @@ export async function restoreStructuredImportToLocalDataRepository(
   }
 
   async function restoreDomain(domain: LocalDataDomain, operation: () => Promise<LocalDataCommitMeta>) {
+    if (!selectedDomainSet.has(domain)) return;
     if (skippedDomainSet.has(domain)) {
       skippedDomains.push({ domain, reason: 'precondition-failed' });
       return;

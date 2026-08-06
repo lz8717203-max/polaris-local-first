@@ -1,4 +1,5 @@
 import type { LocalDataDomain } from '../engines/localData';
+import type { StoreImportMode } from './storeImportSelection';
 
 export type StoreImportDomainFailure = {
   domain: LocalDataDomain | 'localStorage';
@@ -10,6 +11,8 @@ export type StoreImportResult = {
   status: 'complete' | 'partial';
   importedDomains: LocalDataDomain[];
   retainedDomains: StoreImportDomainFailure[];
+  requestedDomains?: LocalDataDomain[];
+  mode?: StoreImportMode;
 };
 
 const DOMAIN_LABELS: Record<StoreImportDomainFailure['domain'], string> = {
@@ -24,8 +27,29 @@ const DOMAIN_LABELS: Record<StoreImportDomainFailure['domain'], string> = {
 };
 
 export function formatStoreImportResult(result: StoreImportResult) {
+  if (!result.mode) {
+    if (result.status === 'complete') {
+      return `导入完成：${result.importedDomains.length} 个数据域已安全替换。`;
+    }
+    const retained = result.retainedDomains
+      .filter((entry) => entry.stage !== 'promotion' && entry.stage !== 'refresh')
+      .map((entry) => DOMAIN_LABELS[entry.domain]);
+    const verification = result.retainedDomains
+      .filter((entry) => entry.stage === 'promotion' || entry.stage === 'refresh' || entry.stage === 'cleanup')
+      .map((entry) => DOMAIN_LABELS[entry.domain]);
+    const parts = [`部分导入完成：${result.importedDomains.length} 个数据域已更新。`];
+    if (retained.length > 0) {
+      parts.push(`${Array.from(new Set(retained)).join('、')}写入失败，已有数据没有被清空。`);
+    }
+    if (verification.length > 0) {
+      parts.push(`${Array.from(new Set(verification)).join('、')}的激活、清理或界面刷新将在下次启动继续检查。`);
+    }
+    return parts.join('');
+  }
+
+  const action = result.mode === 'merge' ? '合并' : '替换';
   if (result.status === 'complete') {
-    return `导入完成：${result.importedDomains.length} 个数据域已安全替换。`;
+    return `导入完成：已安全${action} ${result.importedDomains.length} 类数据。`;
   }
   const retained = result.retainedDomains
     .filter((entry) => entry.stage !== 'promotion' && entry.stage !== 'refresh')
@@ -33,7 +57,7 @@ export function formatStoreImportResult(result: StoreImportResult) {
   const verification = result.retainedDomains
     .filter((entry) => entry.stage === 'promotion' || entry.stage === 'refresh' || entry.stage === 'cleanup')
     .map((entry) => DOMAIN_LABELS[entry.domain]);
-  const parts = [`部分导入完成：${result.importedDomains.length} 个数据域已更新。`];
+  const parts = [`部分导入完成：${result.importedDomains.length} 类数据已${action}。`];
   if (retained.length > 0) {
     parts.push(`${Array.from(new Set(retained)).join('、')}写入失败，已有数据没有被清空。`);
   }

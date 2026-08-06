@@ -200,6 +200,7 @@ export interface PersonaAdvancedSettings {
   contextMessageLimit: string;
   showThinking: boolean;
   streaming: boolean;
+  multiMessageEnabled?: boolean;
   customHeaders: string;
   customBody: string;
   regexRules: string;

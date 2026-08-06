@@ -1,12 +1,11 @@
-import { importStructuredExportPackage } from './storeImportPackage';
+import { importStructuredExportPackage, type ImportStructuredExportPackageOptions } from './storeImportPackage';
 import { importKelivoBackupPackageIfMatched } from './kelivoImportAdapter';
-import type { StoreImportProgressReporter } from './storeImportProgress';
 import type { StoreImportResult } from './storeImportResult';
 import { fingerprintDiagnosticId, reportPersistenceError } from '../infrastructure/persistenceDiagnostics';
 
 export async function importAllData(
   file: Blob,
-  options: { onProgress?: StoreImportProgressReporter } = {}
+  options: ImportStructuredExportPackageOptions = {}
 ): Promise<StoreImportResult> {
   options.onProgress?.({ message: '识别备份包' });
   const header = new Uint8Array(await file.slice(0, 4).arrayBuffer());

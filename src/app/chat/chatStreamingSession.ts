@@ -26,6 +26,7 @@ type StreamingSessionArgs = {
   activeProjectId?: string | null;
   allowCreativeCssRecovery?: boolean;
   mcpTools?: McpResolvedToolDefinition[];
+  suppressVisibleProgress?: boolean;
   onFirstProgressFlushed?: () => void;
 };
 
@@ -67,6 +68,7 @@ export function createStreamingSession(args: StreamingSessionArgs) {
     activeProjectId = null,
     allowCreativeCssRecovery = false,
     mcpTools = [],
+    suppressVisibleProgress = false,
     onFirstProgressFlushed
   } = args;
   const controller = new AbortController();
@@ -104,15 +106,17 @@ export function createStreamingSession(args: StreamingSessionArgs) {
       ignoredUnknownNativeToolNames,
       { hasWorkspaceContext, activeProjectId, allowCreativeCssRecovery, mcpTools }
     );
-    chat.updateMessage(writableConversation, placeholderId, buildAssistantMessagePatch({
-      messageId: placeholderId,
-      assistantName,
-      speakerCollaboratorId,
-      providerId,
-      providerName,
-      visibleContent,
-      reply: latestProgress
-    }));
+    if (!suppressVisibleProgress) {
+      chat.updateMessage(writableConversation, placeholderId, buildAssistantMessagePatch({
+        messageId: placeholderId,
+        assistantName,
+        speakerCollaboratorId,
+        providerId,
+        providerName,
+        visibleContent,
+        reply: latestProgress
+      }));
+    }
     if (!hasReceivedFirstProgress) {
       hasReceivedFirstProgress = true;
       setStreamingPhase('live');

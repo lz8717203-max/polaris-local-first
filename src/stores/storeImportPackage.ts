@@ -31,18 +31,30 @@ import {
   SPACE_STORE_VERSION,
   type AssetIndexEntry,
   type ExportManifest,
-  type StructuredExportSnapshot
+  type StructuredExportSnapshot,
+  readCurrentStructuredExportSnapshot
 } from './storeExportPackage';
 import type { StoreImportProgressReporter } from './storeImportProgress';
 import type { Persona, ProjectFile, WorkspaceReferenceDoc } from '../types/domain';
 import type { StoreImportDomainFailure, StoreImportResult } from './storeImportResult';
+import {
+  DEFAULT_STORE_IMPORT_SELECTION,
+  mergeStructuredExportSnapshots,
+  normalizeStoreImportSelection,
+  selectStructuredExportSnapshotDomains,
+  selectedStoreImportDomains,
+  type StoreImportMode,
+  type StoreImportSelection
+} from './storeImportSelection';
 import { fingerprintDiagnosticId, reportPersistenceError } from '../infrastructure/persistenceDiagnostics';
 
 const LOCAL_STORAGE_PREFIX = 'polaris';
 const ASSET_READ_CONCURRENCY = 4;
 
-type ImportStructuredExportPackageOptions = {
+export type ImportStructuredExportPackageOptions = {
   onProgress?: StoreImportProgressReporter;
+  mode?: StoreImportMode;
+  selection?: Partial<StoreImportSelection>;
 };
 
 type PersistedPersonaState = {
@@ -474,7 +486,10 @@ export async function importStructuredExportPackage(
     throw new Error('导出包资产数量不一致');
   }
 
-  const assetEntries = await readAssetEntriesFromExportZip(zip, assetIndex, options.onProgress);
+  const selection = normalizeStoreImportSelection(options.selection);
+  const assetEntries = selection.asset
+    ? await readAssetEntriesFromExportZip(zip, assetIndex, options.onProgress)
+    : [];
 
   const importedActiveCardId = typeof parsedCollectionState.activeCardId === 'string'
     ? parsedCollectionState.activeCardId
@@ -497,14 +512,13 @@ export async function importStructuredExportPackage(
         : normalizeAppCustomization(parsedRuntimeState.customization),
     activeCardId: typeof spaceState.activeCardId === 'string' ? spaceState.activeCardId : importedActiveCardId
   } satisfies PersistedSpaceState;
-  const migratedSpaceState = migratePersistedSpaceState(importedSpaceState);
   return await importStructuredExportSnapshot({
     chatState,
     collectionState,
     personaState,
     personaMemoryDocContent,
     runtimeState,
-    spaceState: migratedSpaceState,
+    spaceState: importedSpaceState,
     assetEntries
   }, options);
 }
@@ -542,15 +556,59 @@ export async function importStructuredExportSnapshot(
   options: ImportStructuredExportPackageOptions = {}
 ): Promise<StoreImportResult> {
   ensureObject(snapshot, '备份快照');
-  const spaceState = migratePersistedSpaceState(validateSpaceState(snapshot.spaceState));
-  const chatState = validateChatState(snapshot.chatState);
-  const collectionState = validateCollectionState(snapshot.collectionState);
-  const personaState = validatePersonaState(snapshot.personaState);
-  const personaMemoryDocContent = snapshot.personaMemoryDocContent === null
-    ? null
-    : validatePersonaMemoryDocContent(snapshot.personaMemoryDocContent);
-  const runtimeState = validateRuntimeState(snapshot.runtimeState);
-  const assetEntries = validateStructuredAssetEntries(snapshot.assetEntries);
+  const selection = normalizeStoreImportSelection(options.selection ?? DEFAULT_STORE_IMPORT_SELECTION);
+  const requestedDomains = selectedStoreImportDomains(selection);
+  if (requestedDomains.length === 0) {
+    throw new Error('请至少选择一类要恢复的数据');
+  }
+  const mode = options.mode ?? 'replace';
+  const scopedImportRequested = options.mode !== undefined || options.selection !== undefined;
+
+  const incomingSnapshot: Required<StructuredExportSnapshot> = {
+    spaceState: validateSpaceState(snapshot.spaceState),
+    chatState: validateChatState(snapshot.chatState),
+    collectionState: validateCollectionState(snapshot.collectionState),
+    personaState: validatePersonaState(snapshot.personaState),
+    personaMemoryDocContent: snapshot.personaMemoryDocContent === null
+      ? null
+      : validatePersonaMemoryDocContent(snapshot.personaMemoryDocContent),
+    runtimeState: validateRuntimeState(snapshot.runtimeState),
+    assetEntries: selection.asset ? validateStructuredAssetEntries(snapshot.assetEntries) : []
+  };
+
+  let effectiveSnapshot = incomingSnapshot;
+  const needsCurrentSnapshot = mode === 'merge' || requestedDomains.length < 7;
+  if (needsCurrentSnapshot) {
+    options.onProgress?.({
+      message: mode === 'merge' ? '读取当前数据用于合并' : '读取未选择的当前数据'
+    });
+    const currentRaw = await readCurrentStructuredExportSnapshot({
+      onProgress: options.onProgress,
+      includeAssets: selection.asset
+    });
+    const currentSnapshot: Required<StructuredExportSnapshot> = {
+      spaceState: validateSpaceState(currentRaw.spaceState),
+      chatState: validateChatState(currentRaw.chatState),
+      collectionState: validateCollectionState(currentRaw.collectionState),
+      personaState: validatePersonaState(currentRaw.personaState),
+      personaMemoryDocContent: currentRaw.personaMemoryDocContent === null
+        ? null
+        : validatePersonaMemoryDocContent(currentRaw.personaMemoryDocContent),
+      runtimeState: validateRuntimeState(currentRaw.runtimeState),
+      assetEntries: selection.asset ? validateStructuredAssetEntries(currentRaw.assetEntries) : []
+    };
+    effectiveSnapshot = mode === 'merge'
+      ? mergeStructuredExportSnapshots(currentSnapshot, incomingSnapshot, selection)
+      : selectStructuredExportSnapshotDomains(currentSnapshot, incomingSnapshot, selection);
+  }
+
+  const spaceState = migratePersistedSpaceState(effectiveSnapshot.spaceState);
+  const chatState = effectiveSnapshot.chatState;
+  const collectionState = effectiveSnapshot.collectionState;
+  const personaState = effectiveSnapshot.personaState;
+  const personaMemoryDocContent = effectiveSnapshot.personaMemoryDocContent;
+  const runtimeState = effectiveSnapshot.runtimeState;
+  const assetEntries = effectiveSnapshot.assetEntries;
 
   options.onProgress?.({ message: '收束未保存数据' });
   await flushPageLifecycleHandlers();
@@ -559,49 +617,55 @@ export async function importStructuredExportSnapshot(
   const skipDomains: Array<'space' | 'asset'> = [];
   const importCommittedAt = Date.now();
   const assetCommitId = `import-asset-${importCommittedAt}`;
-  const previousLocalStorage = readPolarisLocalStorage();
-  const importedLocalStorageEntries: ImportLocalStorageEntry[] = [{
-    key: SPACE_STORE_KEY,
-    value: JSON.stringify({
-      state: serializePersistedSpaceLocalState(spaceState),
-      version: SPACE_STORE_VERSION
-    })
-  }];
+  const previousLocalStorage = selection.space ? readPolarisLocalStorage() : [];
+  const importedLocalStorageEntries: ImportLocalStorageEntry[] = selection.space
+    ? [{
+        key: SPACE_STORE_KEY,
+        value: JSON.stringify({
+          state: serializePersistedSpaceLocalState(spaceState),
+          version: SPACE_STORE_VERSION
+        })
+      }]
+    : [];
   let localStorageApplied = false;
-  try {
-    replacePolarisLocalStorage(importedLocalStorageEntries);
-    localStorageApplied = true;
-  } catch (error) {
-    skipDomains.push('space');
-    failures.push({
-      domain: 'space',
-      stage: 'local-storage',
-      reason: restoreFailureReason(error)
-    });
+  if (selection.space) {
+    try {
+      replacePolarisLocalStorage(importedLocalStorageEntries);
+      localStorageApplied = true;
+    } catch (error) {
+      skipDomains.push('space');
+      failures.push({
+        domain: 'space',
+        stage: 'local-storage',
+        reason: restoreFailureReason(error)
+      });
+    }
   }
 
   let assetStage: Awaited<ReturnType<typeof stageAssetImportEntries>> | null = null;
-  options.onProgress?.({
-    message: assetEntries.length > 0 ? '写入附件' : '刷新导入结果',
-    current: assetEntries.length > 0 ? 0 : undefined,
-    total: assetEntries.length > 0 ? assetEntries.length : undefined
-  });
-  try {
-    assetStage = await stageAssetImportEntries(assetEntries, {
-      assetCommitId,
-      onProgress: (current, total) => options.onProgress?.({ message: '写入附件', current, total })
-    });
-  } catch (error) {
-    skipDomains.push('asset');
-    failures.push({
-      domain: 'asset',
-      stage: 'asset-staging',
-      reason: restoreFailureReason(error)
+  if (selection.asset) {
+    options.onProgress?.({
+      message: assetEntries.length > 0 ? '写入附件' : '刷新导入结果',
+      current: assetEntries.length > 0 ? 0 : undefined,
+      total: assetEntries.length > 0 ? assetEntries.length : undefined
     });
     try {
-      await recoverPendingAssetImportStage();
-    } catch {
-      // The durable manifest remains for startup recovery.
+      assetStage = await stageAssetImportEntries(assetEntries, {
+        assetCommitId,
+        onProgress: (current, total) => options.onProgress?.({ message: '写入附件', current, total })
+      });
+    } catch (error) {
+      skipDomains.push('asset');
+      failures.push({
+        domain: 'asset',
+        stage: 'asset-staging',
+        reason: restoreFailureReason(error)
+      });
+      try {
+        await recoverPendingAssetImportStage();
+      } catch {
+        // The durable manifest remains for startup recovery.
+      }
     }
   }
 
@@ -614,7 +678,11 @@ export async function importStructuredExportSnapshot(
     runtimeState,
     spaceState,
     assetEntries: assetStage?.entries ?? []
-  }, { skipDomains, committedAt: importCommittedAt });
+  }, {
+    skipDomains,
+    selectedDomains: requestedDomains,
+    committedAt: importCommittedAt
+  });
 
   for (const skipped of restoreResult.skippedDomains) {
     if (skipDomains.includes(skipped.domain as 'space' | 'asset')) continue;
@@ -651,7 +719,7 @@ export async function importStructuredExportSnapshot(
     }
   }
 
-  if (restoreResult.restoredDomains.length === 7 && failures.length === 0) {
+  if (requestedDomains.length === 7 && restoreResult.restoredDomains.length === 7 && failures.length === 0) {
     await clearLegacyLocalDataKvShadowIfStoreBackendInstalled();
   }
   options.onProgress?.({ message: '刷新导入结果' });
@@ -672,9 +740,11 @@ export async function importStructuredExportSnapshot(
       fingerprint: fingerprintDiagnosticId(`${failure.domain}:${failure.stage}:${failure.reason}`)
     }, new Error(`Import ${failure.domain} failed during ${failure.stage}.`));
   }
+  const fullyRestored = requestedDomains.every((domain) => importedDomains.includes(domain));
   return {
-    status: failures.length === 0 ? 'complete' : 'partial',
+    status: failures.length === 0 && fullyRestored ? 'complete' : 'partial',
     importedDomains,
-    retainedDomains: failures
+    retainedDomains: failures,
+    ...(scopedImportRequested ? { requestedDomains, mode } : {})
   };
 }

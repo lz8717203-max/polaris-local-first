@@ -146,7 +146,13 @@ export function MenuSheet({
             localImportDetail={controller.localImportDetail}
             localExportProgress={controller.localExportProgress}
             localImportProgress={controller.localImportProgress}
+            importMode={controller.importMode}
+            importSelection={controller.importSelection}
             onBack={() => controller.onSetPage('root')}
+            onSetImportMode={controller.onSetImportMode}
+            onToggleImportDomain={controller.onToggleImportDomain}
+            onSelectAllImportDomains={controller.onSelectAllImportDomains}
+            onClearImportDomains={controller.onClearImportDomains}
             onSetWebDavEndpoint={controller.onSetWebDavEndpoint}
             onSetWebDavUsername={controller.onSetWebDavUsername}
             onSetWebDavPassword={controller.onSetWebDavPassword}

@@ -405,6 +405,22 @@ async function createStructuredExportZip(
   };
 }
 
+export async function readCurrentStructuredExportSnapshot(
+  options: StructuredExportPackageOptions & { includeAssets?: boolean } = {}
+): Promise<Required<StructuredExportSnapshot>> {
+  const stores = await readStructuredExportStores({}, options);
+  const assetEntries = options.includeAssets === false ? [] : await exportAssetEntries();
+  return {
+    spaceState: stores.spaceState,
+    chatState: stores.chatState,
+    collectionState: stores.collectionState,
+    personaState: stores.personaState,
+    personaMemoryDocContent: stores.personaMemoryDocContent,
+    runtimeState: stores.runtimeState,
+    assetEntries
+  };
+}
+
 export async function buildStructuredExportPackage(
   snapshot: StructuredExportSnapshot = {},
   options: StructuredExportPackageOptions = {}
