@@ -30,8 +30,11 @@ type ComposerAttachmentsProps = {
 
 type ComposerQuickActionsProps = {
   pickerOpen: boolean;
+  innerVoiceOpen: boolean;
+  innerVoiceEnabled: boolean;
   interactionLocked: boolean;
   onSetPickerOpen: (open: boolean) => void;
+  onToggleInnerVoice: () => void;
 };
 
 const FILE_ACCEPT =
@@ -39,8 +42,11 @@ const FILE_ACCEPT =
 
 export function ComposerQuickActions({
   pickerOpen,
+  innerVoiceOpen,
+  innerVoiceEnabled,
   interactionLocked,
-  onSetPickerOpen
+  onSetPickerOpen,
+  onToggleInnerVoice
 }: ComposerQuickActionsProps) {
   const { t } = useI18n();
 
@@ -62,6 +68,21 @@ export function ComposerQuickActions({
       >
         <Icon name="plus" size={15} />
       </button>
+      {innerVoiceEnabled ? (
+        <button
+          type="button"
+          className={`composer-slot-btn composer-slot-btn-inner-voice ${innerVoiceOpen ? 'active' : ''}`}
+          title={t('chat.innerVoice.open')}
+          aria-label={t('chat.innerVoice.open')}
+          aria-expanded={innerVoiceOpen}
+          disabled={interactionLocked}
+          onClick={(event) => {
+            runSelectionAction(onToggleInnerVoice, { element: event.currentTarget });
+          }}
+        >
+          <Icon name="sparkle" size={15} />
+        </button>
+      ) : null}
     </div>
   );
 }

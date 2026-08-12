@@ -9,6 +9,7 @@ import {
   useChatAttachments,
   useChatComposer,
   useChatPresentation,
+  useChatStablePayload,
   useChatUi
 } from '../context/ChatContext';
 import { ChatWorkspaceBanner } from './ChatWorkspaceBanner';
@@ -18,6 +19,7 @@ import { ComposerPreviewStrip } from './ComposerPreviewStrip';
 import { SlashCommandSuggestions } from './SlashCommandSuggestions';
 import { useComposerFileIngest } from './useComposerFileIngest';
 import { useI18n } from '../../../../i18n';
+import { InnerVoiceComposerSheet } from './InnerVoiceComposerSheet';
 
 function resolveThemeReviveSpell(input: string): 'restore-default' | 'revive-last' | null {
   const normalized = input.trim().toLowerCase().replace(/\s+/g, '');
@@ -44,11 +46,13 @@ function resolveThemeReviveSpell(input: string): 'restore-default' | 'revive-las
 export function ChatComposer() {
   const { t } = useI18n();
   const presentation = useChatPresentation();
+  const stable = useChatStablePayload();
   const composer = useChatComposer();
   const ui = useChatUi();
   const attachments = useChatAttachments();
   const actions = useChatActions();
   const [attachmentPickerOpen, setAttachmentPickerOpen] = useState(false);
+  const [innerVoiceOpen, setInnerVoiceOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activeConversationId = presentation.activeConversationId;
   const [localDraft, setLocalDraft] = useState(composer.inputDraft);
@@ -110,6 +114,7 @@ export function ChatComposer() {
   }, []);
 
   useEffect(() => {
+    setInnerVoiceOpen(false);
     draftConversationIdRef.current = activeConversationId;
     syncedDraftConversationIdRef.current = activeConversationId;
     syncedDraftRef.current = composer.inputDraft;
@@ -136,6 +141,7 @@ export function ChatComposer() {
   }, [localDraft]);
 
   const interactionLocked = presentation.interactionLocked;
+  const innerVoiceEnabled = stable.conversation?.kind !== 'group';
   const hasUnsupportedPendingImages = presentation.hasUnsupportedPendingImages;
   const visibleStatus = ui.commandStatus;
   const slashCommandQuery = useMemo(() => {
@@ -192,6 +198,16 @@ export function ChatComposer() {
     if (!attachmentPickerOpen) return;
     setAttachmentPickerOpen(false);
   };
+  const toggleInnerVoice = () => {
+    setAttachmentPickerOpen(false);
+    setInnerVoiceOpen((current) => !current);
+  };
+  const sendInnerVoice = async (innerVoice: string, spoken: string) => {
+    await actions.submit({ inputDraft: spoken, innerVoice });
+    updateLocalDraft('');
+    writeDraftToStore('', draftConversationIdRef.current);
+    setInnerVoiceOpen(false);
+  };
   const handleComposerBlankDismiss = (target: EventTarget | null) => {
     if (!attachmentPickerOpen || !(target instanceof HTMLElement)) return;
     const interactiveTarget = target.closest(
@@ -225,7 +241,7 @@ export function ChatComposer() {
         />
       ) : null}
       <div
-        className={`chat-composer ${attachmentPickerOpen ? 'picker-open' : ''} ${composer.dragActive ? 'drag-active' : ''}`}
+        className={`chat-composer ${attachmentPickerOpen ? 'picker-open' : ''} ${innerVoiceOpen ? 'inner-voice-open' : ''} ${composer.dragActive ? 'drag-active' : ''}`}
         onPointerDownCapture={(event) => handleComposerBlankDismiss(event.target)}
         onClickCapture={(event) => handleComposerBlankDismiss(event.target)}
         onPaste={(event) => { void handleComposerPaste(event); }}
@@ -271,6 +287,14 @@ export function ChatComposer() {
           query={slashCommandQuery}
           onPick={handlePickSlashCommand}
         />
+        {innerVoiceOpen && innerVoiceEnabled ? (
+          <InnerVoiceComposerSheet
+            initialSpoken={localDraft}
+            disabled={interactionLocked || ui.sending || hasUnsupportedPendingImages}
+            onCancel={() => setInnerVoiceOpen(false)}
+            onSend={sendInnerVoice}
+          />
+        ) : null}
         <div className="chat-submit-anchor">
           {ui.submitFlight ? (
             <div key={ui.submitFlight.id} className="chat-submit-flight" aria-hidden="true">
@@ -284,8 +308,14 @@ export function ChatComposer() {
             <div className="chat-box-main">
               <ComposerQuickActions
                 pickerOpen={attachmentPickerOpen}
+                innerVoiceOpen={innerVoiceOpen}
+                innerVoiceEnabled={innerVoiceEnabled}
                 interactionLocked={interactionLocked}
-                onSetPickerOpen={setAttachmentPickerOpen}
+                onSetPickerOpen={(open) => {
+                  if (open) setInnerVoiceOpen(false);
+                  setAttachmentPickerOpen(open);
+                }}
+                onToggleInnerVoice={toggleInnerVoice}
               />
               <textarea
                 ref={textareaRef}
@@ -296,7 +326,7 @@ export function ChatComposer() {
                 onFocus={handleComposerInputEngage}
                 onBlur={flushDraftToStore}
                 onKeyDown={handleKeyDown}
-                disabled={interactionLocked}
+                disabled={interactionLocked || innerVoiceOpen}
                 placeholder={`to ${presentation.assistantName}`}
               />
               <button
@@ -309,7 +339,7 @@ export function ChatComposer() {
                     ? 'has-content'
                     : ''
                 }`}
-                disabled={hasUnsupportedPendingImages || interactionLocked}
+                disabled={hasUnsupportedPendingImages || interactionLocked || innerVoiceOpen}
                 aria-label={ui.sending ? t('chat.composer.stopGeneration') : hasSlashCommandDraft ? t('chat.composer.executeCommand') : t('chat.composer.sendMessage')}
                 onClick={(event) => {
                   runImpactAction(handleSubmitPress, {

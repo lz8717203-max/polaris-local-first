@@ -73,6 +73,27 @@ function parseSafeInlineStyle(styleText: string | undefined) {
   return Object.keys(style).length > 0 ? style : undefined;
 }
 
+function resolveSafeLinkUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed, 'https://polaris.local');
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
+function resolveSafeImageUrl(value: string) {
+  const trimmed = value.trim();
+  if (/^data:image\/(?:png|jpe?g|gif|webp|avif);base64,[a-z0-9+/=\s]+$/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('blob:')) return trimmed;
+  return resolveSafeLinkUrl(trimmed);
+}
+
 function renderInlineMarkdownOnly(content: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let cursor = 0;
@@ -112,9 +133,33 @@ function renderInlineMarkdownOnly(content: string): ReactNode[] {
       const imageMatch = segment.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
       const linkMatch = segment.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
       if (imageMatch) {
-        nodes.push(<a key={`image-${index}`} href={imageMatch[2]} target="_blank" rel="noreferrer">{imageMatch[1] || imageMatch[2]}</a>);
+        const src = resolveSafeImageUrl(imageMatch[2]);
+        if (src) {
+          nodes.push(
+            <a
+              key={`image-${index}`}
+              className="message-markdown-image-link"
+              href={src}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img
+                className="message-markdown-image"
+                src={src}
+                alt={imageMatch[1]}
+                loading="lazy"
+                decoding="async"
+              />
+            </a>
+          );
+        } else {
+          nodes.push(<span key={`image-invalid-${index}`}>{imageMatch[1] || '[图片]'}</span>);
+        }
       } else if (linkMatch) {
-        nodes.push(<a key={`link-${index}`} href={linkMatch[2]} target="_blank" rel="noreferrer">{linkMatch[1]}</a>);
+        const href = resolveSafeLinkUrl(linkMatch[2]);
+        nodes.push(href
+          ? <a key={`link-${index}`} href={href} target="_blank" rel="noreferrer">{linkMatch[1]}</a>
+          : <span key={`link-invalid-${index}`}>{linkMatch[1]}</span>);
       } else {
         nodes.push(<span key={`text-${index}`}>{segment}</span>);
       }

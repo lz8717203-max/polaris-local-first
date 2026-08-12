@@ -25,6 +25,8 @@ export interface ChatMessage {
   origin?: 'user-input' | 'assistant-reply' | 'system-note' | 'tool-runtime' | 'trigger-runtime';
   requestRole?: 'user' | 'assistant' | 'system';
   requestContent?: string;
+  /** User-authored text stored with the message but narrated only to the model. */
+  innerVoice?: string;
   attachments?: ChatAttachment[];
   providerId?: string;
   providerName?: string;
@@ -235,4 +237,3 @@ export interface ChatAttachment {
   textContent?: string;
   clearedAt?: number;
 }
-

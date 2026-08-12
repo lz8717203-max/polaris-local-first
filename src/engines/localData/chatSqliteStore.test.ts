@@ -394,6 +394,35 @@ describe('createTypedChatSqliteStore', () => {
     });
   });
 
+  it('persists inner voice metadata and narrated request content in the same message row', async () => {
+    const driver = createSqliteDriver();
+    const store = createTypedChatSqliteStore({ driver });
+    const conversation = createConversation({ id: 'c-heart', title: '心声', updatedAt: 300, messageCount: 1 });
+    conversation.messages[0] = {
+      id: 'c-heart-m-0',
+      role: 'user',
+      content: '……',
+      timestamp: 300,
+      innerVoice: '好想他抱抱我。',
+      requestRole: 'user',
+      requestContent: '（心声记录：她心里想的是「好想他抱抱我。」，但她什么都没说。）'
+    };
+
+    await store.writeConversations([conversation]);
+
+    await expect(store.readMessageWindow('c-heart', { limit: 20 })).resolves.toEqual({
+      status: 'loaded',
+      expectedCount: 1,
+      nextBeforeSeq: null,
+      messages: [expect.objectContaining({
+        id: 'c-heart-m-0',
+        innerVoice: '好想他抱抱我。',
+        requestContent: expect.stringContaining('但她什么都没说')
+      })]
+    });
+    expect(driver.messages.size).toBe(1);
+  });
+
   it('separates a missing conversation from a loaded empty conversation', async () => {
     const driver = createSqliteDriver();
     const store = createTypedChatSqliteStore({ driver });

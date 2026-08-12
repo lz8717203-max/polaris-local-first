@@ -13,6 +13,7 @@ import {
 import { normalizeReplySpacing } from '../../engines/replyText';
 import type { McpResolvedToolDefinition } from '../../engines/mcpRuntime';
 import { resolveAssistantToolIngress } from './chatToolActionIngress';
+import { sanitizeAssistantInnerVoiceImitation } from './chatInnerVoice';
 
 type StartAssistantPlaceholderArgs = {
   writableConversation: WritableConversationBody;
@@ -60,13 +61,17 @@ export function parseAssistantReplyContent(
     mcpTools?: McpResolvedToolDefinition[];
   } = {}
 ) {
+  const safeContent = sanitizeAssistantInnerVoiceImitation(content);
+  if (phase === 'final' && safeContent !== content) {
+    console.warn('[chat] Removed an assistant-authored inner voice marker before persistence.');
+  }
   const {
     parsed: effectiveParsed,
     sources: ingressSources,
     sanitizedContent,
     taskUpdate
   } = resolveAssistantToolIngress({
-    content,
+    content: safeContent,
     modelTier,
     themeToolMode,
     phase,

@@ -5,6 +5,9 @@
 .message-rich-text strong { font-weight: 600; color: inherit; }
 .message-rich-text em { font-style: italic; }
 .message-rich-text a { color: color-mix(in srgb, var(--accent) 82%, var(--text) 18%); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 38%, transparent); text-underline-offset: 0.16em; }
+.message-rich-text .message-markdown-image-link { display: block; max-width: min(100%, 520px); text-decoration: none; border-radius: 16px; overflow: hidden; }
+.message-markdown-image { display: block; width: auto; max-width: 100%; max-height: min(58vh, 620px); object-fit: contain; border-radius: 16px; background: color-mix(in srgb, var(--surface) 20%, transparent); }
+.bubble.user .message-markdown-image { max-width: min(72vw, 420px); }
 .message-markdown { gap: 0.82em; white-space: normal; }
 .bubble.assistant > .message-rich-text > * + * { margin-top: 0.56em; }
 .bubble.assistant > .message-markdown > * + * { margin-top: 0.82em; }

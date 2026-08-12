@@ -386,4 +386,42 @@ describe('submitMessage', () => {
     expect(clearPendingCardReference).toHaveBeenCalled();
     expect(onUserMessageSubmitted).not.toHaveBeenCalled();
   });
+
+  it('allows a pure inner voice and sends only one model request', async () => {
+    const addMessage = vi.fn();
+    const requestReply = vi.fn(() => Promise.resolve());
+    const submitToolCommand = vi.fn(() => Promise.resolve(false));
+
+    await submitMessage({
+      inputDraft: '',
+      innerVoice: '别只说你在。你哄哄我。',
+      pendingAttachments: [],
+      pendingCardReference: null,
+      sending: false,
+      hasUnsupportedPendingImages: false,
+      conversations: [],
+      activeConversationId: null,
+      frontstageCollaboratorId: 'pharos',
+      activeCollaboratorId: 'pharos',
+      personas: [{ id: 'pharos' }] as never[]
+    }, {
+      createConversation: vi.fn(() => 'conv-heart'),
+      ensureConversationWritable: writableSession(),
+      addMessage,
+      setInputDraft: vi.fn(),
+      clearPendingAttachments: vi.fn(),
+      clearPendingCardReference: vi.fn(),
+      setCommandStatus: vi.fn(),
+      submitToolCommand,
+      requestReply
+    });
+
+    expect(submitToolCommand).not.toHaveBeenCalled();
+    expect(addMessage).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      content: '……',
+      innerVoice: '别只说你在。你哄哄我。',
+      requestContent: expect.stringContaining('但她什么都没说')
+    }));
+    expect(requestReply).toHaveBeenCalledTimes(1);
+  });
 });

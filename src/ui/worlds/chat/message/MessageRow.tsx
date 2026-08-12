@@ -337,6 +337,15 @@ function MessageRowComponent({
           />
         ) : (
           <>
+            {isUserMessage && message.innerVoice?.trim() ? (
+              <details className="message-inner-voice">
+                <summary>
+                  <span aria-hidden="true">🐾</span>
+                  {t('chat.innerVoice.messageLabel')}
+                </summary>
+                <p>{message.innerVoice.trim()}</p>
+              </details>
+            ) : null}
             <ChatAttachmentStrip
               attachments={message.attachments}
               tone="message"

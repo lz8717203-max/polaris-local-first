@@ -16,6 +16,7 @@ import {
 } from './chatSendPerformanceTrace';
 import { selectChatConversations } from './liveConversationCatalog';
 import { reportPersistenceError } from '../../infrastructure/persistenceDiagnostics';
+import { rebuildInnerVoiceRequestContent } from './chatInnerVoice';
 
 type CreateChatActionHandlersArgs = {
   startupReady: boolean;
@@ -58,19 +59,24 @@ export function createChatActionHandlers({
     };
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (options?: { inputDraft?: string; innerVoice?: string }) => {
     if (!startupReady) {
       return;
     }
 
-    const latestSubmitState = readLatestSubmitState();
+    const latestSubmitState = {
+      ...readLatestSubmitState(),
+      ...(options?.inputDraft !== undefined ? { inputDraft: options.inputDraft } : {}),
+      innerVoice: options?.innerVoice
+    };
     const latestActiveConversation = latestSubmitState.activeConversationId
       ? latestSubmitState.conversations.find((conversation) => conversation.id === latestSubmitState.activeConversationId) ?? null
       : null;
     const submitFingerprint = buildSubmitFingerprint(
       latestSubmitState.inputDraft,
       latestSubmitState.pendingAttachments,
-      latestSubmitState.pendingCardReference
+      latestSubmitState.pendingCardReference,
+      latestSubmitState.innerVoice
     );
     if (activeSubmitFingerprintRef.current === submitFingerprint) {
       if (latestSubmitState.activeConversationId) {
@@ -90,6 +96,10 @@ export function createChatActionHandlers({
             ) ?? null
           : null;
       if (activeCompanionConnection) {
+        if (latestSubmitState.innerVoice?.trim()) {
+          ui.setCommandStatus('心声暂时只支持 Polaris 直连对话。', true);
+          return;
+        }
         await submitCompanionMessage({
           inputDraft: latestSubmitState.inputDraft,
           pendingAttachments: latestSubmitState.pendingAttachments,
@@ -109,6 +119,7 @@ export function createChatActionHandlers({
       }
       await submitMessage({
         inputDraft: latestSubmitState.inputDraft,
+        innerVoice: latestSubmitState.innerVoice,
         pendingAttachments: latestSubmitState.pendingAttachments,
         pendingCardReference: latestSubmitState.pendingCardReference,
         sending: ui.sending,
@@ -160,6 +171,7 @@ export function createChatActionHandlers({
     const nextUserMessage: ChatMessage = {
       ...message,
       content: nextContent,
+      requestContent: rebuildInnerVoiceRequestContent(message, nextContent),
       attachments: nextAttachments.length ? nextAttachments : undefined,
       timestamp: Date.now()
     };
