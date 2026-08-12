@@ -50,6 +50,37 @@
 .bubble.user .message-rich-text > * + * {
   margin-top: 0.44em;
 }
+.message-inner-voice {
+  position: relative;
+  z-index: 2;
+  margin: 0 0 7px;
+  color: color-mix(in srgb, #9b6f61 78%, var(--text-soft));
+  font-size: 12px;
+}
+.message-inner-voice summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.message-inner-voice summary::-webkit-details-marker { display: none; }
+.message-inner-voice summary::after { content: '›'; display: inline-block; transition: transform 160ms ease; }
+.message-inner-voice[open] summary::after { transform: rotate(90deg); }
+.message-inner-voice p {
+  max-width: min(72vw, 440px);
+  margin: 7px 0 2px;
+  padding: 9px 11px;
+  border: 1px dashed color-mix(in srgb, #c99580 52%, var(--border));
+  border-radius: 13px;
+  background: color-mix(in srgb, #f7e9e2 70%, var(--surface));
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
 .bubble.assistant {
   align-self: flex-start;
   display: inline-block;

@@ -18,6 +18,7 @@ export type RequestMessage = {
   content: string;
   timestamp: number;
   origin?: ChatMessage['origin'];
+  innerVoice?: string;
   thinkingText?: string;
   attachments?: RequestAttachment[];
   nativeToolCalls?: ChatNativeToolCall[];
@@ -56,6 +57,7 @@ export function toRequestMessage(message: ChatMessage): RequestMessage {
     content: message.requestContent ?? message.content,
     timestamp: message.timestamp,
     origin: message.origin,
+    innerVoice: message.innerVoice,
     thinkingText: message.thinkingText,
     attachments: message.attachments as RequestAttachment[] | undefined,
     nativeToolCalls: message.nativeToolCalls,

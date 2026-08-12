@@ -104,12 +104,15 @@ export function resolveContextTokenBudget(providerBudgets: ProviderRuntimePrompt
 function buildConversationContext(args: {
   messages: ChatMessage[];
   persona: Persona | null | undefined;
+  modelId: string;
   historyMaxTokens: number;
   messageLimit: number;
   historyMode: AssistantRequestAudit['contextPlan']['historyMode'];
 }) {
   const conversationBuildStartedAt = runtimeNow();
-  const preparedMessages = prepareConversationMessages(args.messages, args.persona);
+  const preparedMessages = prepareConversationMessages(args.messages, args.persona, {
+    modelId: args.modelId
+  });
   const conversationBuildMs = runtimeNow() - conversationBuildStartedAt;
   const contextPlanStartedAt = runtimeNow();
   const { conversation, contextPlan, historyDecision } = buildRequestContextPlan({
@@ -735,6 +738,7 @@ export async function prepareCollaboratorReplyRequest(params: {
   } = buildConversationContext({
     messages: requestSourceMessages,
     persona,
+    modelId,
     historyMaxTokens,
     messageLimit,
     historyMode: toolContext?.activeProject ? 'workspace' : 'conversation'

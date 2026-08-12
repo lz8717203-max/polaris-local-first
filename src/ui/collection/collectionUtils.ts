@@ -45,6 +45,10 @@ export function recentConversationCopy(conversation: Conversation, language: App
     .reverse()
     .find((message) => message.content.trim());
 
+  if (recentMessage?.innerVoice?.trim()) {
+    const content = recentMessage.content.trim();
+    return content && content !== '……' ? `[心声] ${content}` : '[心声]';
+  }
   return recentMessage?.content || t('collection.conversation.emptyExcerpt');
 }
 

@@ -4,6 +4,7 @@ import type { ChatMessage, Persona } from '../../types/domain';
 import { buildCardReferenceSystemContent } from './requestContextContent';
 import { materializeRequestContextMessage, normalizeRequestContextMessageOrder } from './requestContextMessages';
 import { toRequestMessage, type RequestMessage } from './requestMessage';
+import { resolveInnerVoiceSystemConstraint } from '../../app/chat/chatInnerVoice';
 
 export type PreparedConversationMessages = {
   messages: RequestMessage[];
@@ -37,6 +38,22 @@ function materializeConversationCardReferences(messages: RequestMessage[]): Requ
       message
     ];
   });
+}
+
+function materializeInnerVoiceConstraint(messages: RequestMessage[], modelId?: string): RequestMessage[] {
+  const firstInnerVoiceMessage = messages.find((message) => message.role === 'user' && message.innerVoice?.trim());
+  if (!firstInnerVoiceMessage) return messages;
+
+  return [
+    {
+      id: 'inner-voice-channel:system',
+      role: 'system',
+      content: resolveInnerVoiceSystemConstraint(modelId),
+      timestamp: Math.max(0, firstInnerVoiceMessage.timestamp - 1),
+      origin: 'system-note'
+    },
+    ...messages.map(({ innerVoice: _innerVoice, ...message }) => message)
+  ];
 }
 
 function applyRequestMessagePersonaTransforms(
@@ -87,16 +104,21 @@ function applyRequestMessagePersonaTransforms(
 
 export function prepareConversationMessages(
   messages: ChatMessage[],
-  persona: Persona | null | undefined
+  persona: Persona | null | undefined,
+  options: { modelId?: string } = {}
 ): PreparedConversationMessages {
   const contextMessages = messages
     .map(toRequestMessage)
     .map((message) => materializeRequestContextMessage(message));
   const preparedMessages = applyRequestMessagePersonaTransforms(contextMessages, persona);
   const messagesWithCardReferences = materializeConversationCardReferences(preparedMessages);
+  const messagesWithInnerVoiceConstraint = materializeInnerVoiceConstraint(
+    messagesWithCardReferences,
+    options.modelId
+  );
 
   return {
-    messages: normalizeRequestContextMessageOrder(messagesWithCardReferences),
+    messages: normalizeRequestContextMessageOrder(messagesWithInnerVoiceConstraint),
     transforms: {
       requestMessagesMaterialized: true,
       personaTransformed: true,

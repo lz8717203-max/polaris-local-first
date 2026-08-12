@@ -8,9 +8,11 @@ import {
   recordChatSendPerformanceMark
 } from './chatSendPerformanceTrace';
 import { resolveChatReplyPersistenceStatus } from './chatReplyPersistence';
+import { applyInnerVoiceToMessage, normalizeInnerVoice } from './chatInnerVoice';
 
 type SubmitMessageState = {
   inputDraft: string;
+  innerVoice?: string;
   pendingAttachments: ChatAttachment[];
   pendingCardReference: ChatCardReference | null;
   sending: boolean;
@@ -55,10 +57,12 @@ type SubmitMessageHandlers = {
 export function buildSubmitFingerprint(
   inputDraft: string,
   pendingAttachments: ChatAttachment[],
-  pendingCardReference: ChatCardReference | null
+  pendingCardReference: ChatCardReference | null,
+  innerVoice?: string
 ) {
   return [
     inputDraft.trim(),
+    normalizeInnerVoice(innerVoice),
     ...pendingAttachments.map((attachment) => `${attachment.kind}:${attachment.name}:${attachment.id}`),
     pendingCardReference ? `card:${pendingCardReference.id}:${pendingCardReference.mode}` : ''
   ].join('||');
@@ -66,10 +70,11 @@ export function buildSubmitFingerprint(
 
 export async function submitMessage(state: SubmitMessageState, handlers: SubmitMessageHandlers) {
   const trimmedDraft = state.inputDraft.trim();
+  const innerVoice = normalizeInnerVoice(state.innerVoice);
   const escapedSlashCommand = trimmedDraft.startsWith('//');
   const raw = escapedSlashCommand ? trimmedDraft.slice(1) : trimmedDraft;
   if (
-    (!raw && state.pendingAttachments.length === 0 && !state.pendingCardReference)
+    (!raw && !innerVoice && state.pendingAttachments.length === 0 && !state.pendingCardReference)
     || state.sending
     || state.hasUnsupportedPendingImages
   ) {
@@ -82,7 +87,7 @@ export async function submitMessage(state: SubmitMessageState, handlers: SubmitM
   }
 
   const consumedAsToolAction =
-    raw && !escapedSlashCommand && state.pendingAttachments.length === 0
+    raw && !innerVoice && !escapedSlashCommand && state.pendingAttachments.length === 0
       ? await handlers.submitToolCommand(raw)
       : false;
   if (consumedAsToolAction) {
@@ -157,7 +162,7 @@ export async function submitMessage(state: SubmitMessageState, handlers: SubmitM
   if (conversationForSelectedCollaborator?.collaboratorId === null) {
     handlers.setCommandStatus('原协作者已删除，已为当前协作者新开对话继续聊天。');
   }
-  const userMessage = createMessage(
+  const baseUserMessage = createMessage(
     'user',
     raw,
     state.pendingAttachments.length ? state.pendingAttachments : undefined,
@@ -165,6 +170,7 @@ export async function submitMessage(state: SubmitMessageState, handlers: SubmitM
     undefined,
     state.pendingCardReference
   );
+  const userMessage = applyInnerVoiceToMessage(baseUserMessage, innerVoice, raw);
   const nextMessages = [...writableSession.messages, userMessage];
 
   handlers.addMessage(writableSession, userMessage);

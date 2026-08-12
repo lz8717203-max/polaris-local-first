@@ -141,7 +141,7 @@ export function useChatDerived({
       const collaboratorName = resolveConversationCollaboratorName(conversation, collaborators);
       const recentContent = conversation.messages
         .slice(-3)
-        .map((message) => [message.content, ...(message.attachments ?? []).map((attachment) => attachment.name)].join('\n'))
+        .map((message) => [message.content, message.innerVoice, ...(message.attachments ?? []).map((attachment) => attachment.name)].join('\n'))
         .join('\n');
 
       return [conversation.title, collaboratorName, recentContent].join('\n').toLowerCase().includes(query);

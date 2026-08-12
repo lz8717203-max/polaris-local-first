@@ -30,6 +30,27 @@ describe('MessageMarkdown', () => {
     expect(html).toContain('删除线');
   });
 
+  it('renders markdown images inline instead of reducing them to links', () => {
+    const html = renderToStaticMarkup(
+      <MessageMarkdown content={'![表情包](https://cdn.example.com/sticker.webp)'} />
+    );
+
+    expect(html).toContain('<img');
+    expect(html).toContain('class="message-markdown-image"');
+    expect(html).toContain('src="https://cdn.example.com/sticker.webp"');
+    expect(html).toContain('alt="表情包"');
+  });
+
+  it('does not render unsafe markdown image protocols', () => {
+    const html = renderToStaticMarkup(
+      <MessageMarkdown content={'![危险图片](javascript:alert(1))'} />
+    );
+
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('javascript:');
+    expect(html).toContain('危险图片');
+  });
+
   it('renders inline Latex math', () => {
     const html = renderToStaticMarkup(
       <MessageMarkdown content={'能量是 $E = mc^2$。'} />

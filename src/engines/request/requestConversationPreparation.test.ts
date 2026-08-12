@@ -80,6 +80,50 @@ describe('requestConversationPreparation', () => {
     }));
   });
 
+  it('adds one inner voice channel constraint and keeps the narrated user request', () => {
+    const { messages } = prepareConversationMessages([
+      {
+        id: 'user-heart-1',
+        role: 'user',
+        content: '哦。',
+        timestamp: 2,
+        innerVoice: '好喜欢他。',
+        requestRole: 'user',
+        requestContent: '（心声记录：她心里想的是「好喜欢他。」，她说出口的是「哦。」）'
+      }
+    ], null);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toEqual(expect.objectContaining({
+      id: 'inner-voice-channel:system',
+      role: 'system'
+    }));
+    expect(messages[0]?.content).toContain('不要照抄');
+    expect(messages[0]?.content).not.toContain('Gemini 心声格式约束');
+    expect(messages[1]).toEqual(expect.objectContaining({
+      id: 'user-heart-1',
+      role: 'user',
+      content: '（心声记录：她心里想的是「好喜欢他。」，她说出口的是「哦。」）'
+    }));
+    expect(messages[1]).not.toHaveProperty('innerVoice');
+  });
+
+  it('adds the stricter anti-imitation constraint for Gemini models', () => {
+    const { messages } = prepareConversationMessages([
+      {
+        id: 'user-heart-gemini',
+        role: 'user',
+        content: '哦。',
+        timestamp: 2,
+        innerVoice: '其实很在意。',
+        requestContent: '（心声记录：她心里想的是「其实很在意。」，她说出口的是「哦。」）'
+      }
+    ], null, { modelId: 'gemini-2.5-pro' });
+
+    expect(messages[0]?.content).toContain('Gemini 心声格式约束');
+    expect(messages[0]?.content).toContain('也不要给自己添加内在旁白');
+  });
+
   it('keeps provider failure evidence visible locally without replaying raw dumps as assistant history', () => {
     const rawFailure = 'API 返回为空：{"id":"chatcmpl-test","model":"gpt-5.5","choices":[{"message":{"content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":20131,"completion_tokens":0}}';
     const { messages } = prepareConversationMessages([

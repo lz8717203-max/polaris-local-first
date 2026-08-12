@@ -24,6 +24,9 @@ function resolveLatestConversationExcerpt(conversation: Conversation, language: 
   for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
     const message = conversation.messages[index];
     const content = message?.content.trim();
+    if (message?.innerVoice?.trim()) {
+      return content && content !== '……' ? `[心声] ${content}` : '[心声]';
+    }
     if (content) return content;
   }
   return t('collection.conversation.emptyExcerpt');
